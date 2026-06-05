@@ -53,6 +53,7 @@ Then open **http://localhost:8000** in your browser.
    - **Question & Answer tab** — edit the question text and expected answer
    - **Tables tab** — full table editor: click cells to select, double-click to edit, use the toolbar to add/remove rows and columns, adjust colspan/rowspan for hierarchical headers
 6. **Download** the final dataset as CSV or JSON
+7. or **Evaluate** the models on the created datasets and analyze their performance in the **Leaderboard** tab
 
 ## Architecture
 
@@ -69,17 +70,6 @@ TabQAGenerator/
 └── output/                  # (created at runtime) mounted volume for output files
 ```
 
-**Generation flow:**
-
-1. The React frontend sends a `POST /api/generate` with the chosen parameters
-2. The FastAPI backend spawns `generate_script.py` as an async subprocess
-3. `generate_script.py` monkey-patches `tqdm` before importing Gradino, so each completed sample emits a JSON progress line to stdout
-4. The backend streams these progress events to the frontend via **Server-Sent Events** (`GET /api/generate/{id}/stream`)
-5. On completion, the serialised DataFrames are returned as JSON, flattened into a list of instances, and stored in memory
-6. The frontend fetches and renders the instances; edits are pushed back via `PUT /api/tasks/{id}/instances/{iid}`
-
 ## Notes
 
-- Gradino is cloned **read-only** inside the Docker image; no files in the Gradino repository are modified.
 - API keys entered in the UI are sent to the backend over localhost only and are never persisted to disk.
-- The in-memory task store is cleared when the container restarts; download your dataset before stopping the container.
