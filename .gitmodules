@@ -1,0 +1,4 @@
+[submodule "gradino"]
+	path = gradino
+	url = https://github.com/softlab-unimore/Gradino.git
+	branch = master

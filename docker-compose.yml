@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  tabqa:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - GRADINO_PATH=/app/gradino
+      - VLLM_BASE_URL=${VLLM_BASE_URL:-http://vllm:8000/v1}
+    volumes:
+      - ./output:/app/output
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional GPU service for HuggingFace models via vLLM.
+  # Start with: docker compose --profile gpu up --build
+  # Customise model: VLLM_MODEL=meta-llama/Llama-3.1-8B-Instruct docker compose --profile gpu up
+  vllm:
+    image: vllm/vllm-openai:latest
+    profiles: ["gpu"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ports:
+      - "8001:8000"
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    command: ["--model", "${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}", "--port", "8000"]
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface

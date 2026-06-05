@@ -1,0 +1,2105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TabQA Generator — Tabular QA Benchmark Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            indigo: {
+              50:'#eef2ff',100:'#e0e7ff',200:'#c7d2fe',300:'#a5b4fc',
+              400:'#818cf8',500:'#6366f1',600:'#4f46e5',700:'#4338ca',
+              800:'#3730a3',900:'#312e81',950:'#1e1b4b'
+            }
+          },
+          fontFamily: { sans: ['Inter','ui-sans-serif','system-ui','sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased}
+    :root{--brand:#4f46e5;--brand-light:#e0e7ff}
+    .grad-hero{background:linear-gradient(135deg,#312e81 0%,#4f46e5 45%,#7c3aed 100%)}
+    .progress-bar{transition:width .4s cubic-bezier(.4,0,.2,1)}
+    .fade-up{animation:fadeUp .35s ease both}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+    .slide-right{animation:slideRight .3s cubic-bezier(.4,0,.2,1) both}
+    @keyframes slideRight{from{transform:translateX(100%);opacity:0}to{transform:none;opacity:1}}
+    .spin{animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .cell-edit:focus{outline:2px solid #4f46e5;outline-offset:-2px;background:#eef2ff!important}
+    .cell-selected{outline:2px solid #4f46e5!important;background:#e0e7ff!important}
+    .tbl-header-cell{background:#dde4ff;font-weight:600}
+    .tbl-data-cell{background:#ffffff}
+    .tbl-cell{border:1px solid #cbd5e1;padding:5px 10px;min-width:80px;cursor:pointer;font-size:13px;line-height:1.4;white-space:pre-wrap;word-break:break-word}
+    .tbl-cell:hover{background:#f1f5f9}
+    .tbl-header-cell:hover{background:#c7d2fe}
+    .tbl-cell.cell-selected{background:#e0e7ff!important}
+    .row-btn{opacity:0;transition:opacity .15s}
+    tr:hover .row-btn{opacity:1}
+    .col-del-btn{opacity:0;transition:opacity .15s;position:absolute;top:-22px;left:50%;transform:translateX(-50%)}
+    th:hover .col-del-btn,td:hover .col-del-btn{opacity:1}
+    .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:.02em}
+    .scrollbar-thin::-webkit-scrollbar{width:5px;height:5px}
+    .scrollbar-thin::-webkit-scrollbar-track{background:#f1f5f9}
+    .scrollbar-thin::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:9999px}
+    input[type=number]::-webkit-inner-spin-button{opacity:.7}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(4px);z-index:40}
+    .modal-panel{position:fixed;top:0;right:0;bottom:0;width:min(900px,100vw);background:#fff;z-index:50;overflow:hidden;display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(0,0,0,.18)}
+    .modal-panel-sm{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(560px,95vw);background:#fff;z-index:50;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.2)}
+    .tab-active{border-bottom:2px solid #4f46e5;color:#4f46e5;font-weight:600}
+    .tab-inactive{border-bottom:2px solid transparent;color:#64748b}
+    .nav-tab-active{background:#eef2ff;color:#4f46e5;font-weight:600}
+    .nav-tab-inactive{color:#64748b}
+    .acc-bar{background:linear-gradient(90deg,#4f46e5,#7c3aed);border-radius:9999px;height:6px;transition:width .6s ease}
+    .eval-tbl table{border-collapse:collapse;font-size:12px;width:auto;max-width:100%}
+    .eval-tbl th,.eval-tbl td{border:1px solid #cbd5e1;padding:4px 8px;text-align:left;white-space:nowrap}
+    .eval-tbl th{background:#dde4ff;font-weight:600}
+    .chevron-anim{transition:transform .2s ease}
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-900">
+<div id="root"></div>
+
+<script type="text/babel">
+/* ============================================================
+   ERROR BOUNDARY
+   ============================================================ */
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{padding:'24px',background:'#fef2f2',border:'1px solid #fecaca',borderRadius:'12px',margin:'16px'}}>
+          <p style={{fontWeight:700,color:'#b91c1c',marginBottom:'8px'}}>Render error</p>
+          <pre style={{fontSize:'12px',color:'#7f1d1d',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
+            {String(this.state.error)}
+          </pre>
+          <button onClick={()=>this.setState({error:null})}
+            style={{marginTop:'12px',padding:'6px 14px',background:'#ef4444',color:'#fff',border:'none',borderRadius:'6px',cursor:'pointer',fontSize:'13px'}}>
+            Dismiss
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/* ============================================================
+   ICONS
+   ============================================================ */
+const Ico = {
+  Sparkles: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="currentColor"><path d="M9 3l1.5 3.5L14 8l-3.5 1.5L9 13l-1.5-3.5L4 8l3.5-1.5L9 3zm10 7l.75 1.75L21.5 12l-1.75.75L19 14.5l-.75-1.75L16.5 12l1.75-.75L19 10zm-5 7l.75 1.75L16.5 20l-1.75.75L14 22.5l-.75-1.75L11.5 20l1.75-.75L14 17z"/></svg>,
+  Play: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
+  Stop: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>,
+  Pencil: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+  Download: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+  X: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  Plus: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  Minus: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  Table: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>,
+  Check: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>,
+  AlertCircle: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+  Database: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>,
+  Loader: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>,
+  Key: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
+  ChevronLeft: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>,
+  ChevronRight: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>,
+  RefreshCw: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
+  Save: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
+  ArrowRight: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>,
+  History: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/><polyline points="12 7 12 12 16 14"/></svg>,
+  Trophy: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="8 21 12 21 16 21"/><line x1="12" y1="17" x2="12" y2="21"/><path d="M7 4h10l1 7c0 3.31-2.69 6-6 6h0c-3.31 0-6-2.69-6-6L7 4z"/><path d="M7 4H5a2 2 0 0 0-2 2v1c0 2.21 1.79 4 4 4h0"/><path d="M17 4h2a2 2 0 0 1 2 2v1c0 2.21-1.79 4-4 4h0"/></svg>,
+  Flask: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 3h6"/><path d="M10 3v7L5.5 15A4 4 0 0 0 9 21h6a4 4 0 0 0 3.5-6L14 10V3"/><path d="M6.5 17h11"/></svg>,
+  Filter: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>,
+  Star: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+  ChevronDown: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>,
+  Brain: (p={}) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.14Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.14Z"/></svg>,
+};
+
+/* ============================================================
+   TABLE PARSING UTILITIES
+   ============================================================ */
+
+let _cellIdSeq = 0;
+function newCellId() { return `c${++_cellIdSeq}`; }
+
+function parseHTMLToMatrix(htmlStr) {
+  try {
+    if (!htmlStr || !htmlStr.trim()) return { matrix: [], headerRows: 0, numCols: 0 };
+    const clean = htmlStr.replace(/\sstyle="[^"]*"/gi, '').replace(/\son\w+="[^"]*"/gi, '');
+    const parser = new DOMParser();
+    const doc = parser.parseFromString('<html><body>' + clean + '</body></html>', 'text/html');
+    const table = doc.querySelector('table');
+    if (!table) return { matrix: [], headerRows: 0, numCols: 0 };
+
+    const allTRs = Array.from(table.querySelectorAll('tr'));
+    const numRows = allTRs.length;
+    if (numRows === 0) return { matrix: [], headerRows: 0, numCols: 0 };
+
+    let numCols = 0;
+    allTRs.forEach(tr => {
+      let cols = 0;
+      Array.from(tr.querySelectorAll('th,td')).forEach(c => {
+        cols += Math.max(1, parseInt(c.getAttribute('colspan') || '1'));
+      });
+      numCols = Math.max(numCols, cols);
+    });
+    if (numCols === 0) return { matrix: [], headerRows: 0, numCols: 0 };
+
+    const matrix = Array.from({length: numRows}, () => Array(numCols).fill(null));
+
+    allTRs.forEach((tr, rIdx) => {
+      let cIdx = 0;
+      Array.from(tr.querySelectorAll('th,td')).forEach(cell => {
+        while (cIdx < numCols && matrix[rIdx][cIdx] !== null) cIdx++;
+        if (cIdx >= numCols) return;
+        const cs = Math.max(1, parseInt(cell.getAttribute('colspan') || '1'));
+        const rs = Math.max(1, parseInt(cell.getAttribute('rowspan') || '1'));
+        const cellObj = {
+          id: newCellId(),
+          content: cell.innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim(),
+          isHeader: cell.tagName.toLowerCase() === 'th',
+          colspan: cs,
+          rowspan: rs,
+        };
+        matrix[rIdx][cIdx] = cellObj;
+        for (let dr = 0; dr < rs; dr++) {
+          for (let dc = 0; dc < cs; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            const tr2 = rIdx + dr, tc2 = cIdx + dc;
+            if (tr2 < numRows && tc2 < numCols) matrix[tr2][tc2] = { _covered: true };
+          }
+        }
+        cIdx += cs;
+      });
+    });
+
+    const thead = table.querySelector('thead');
+    const headerRows = thead ? thead.querySelectorAll('tr').length : 0;
+    return { matrix, headerRows, numCols };
+  } catch(e) {
+    console.error('parseHTMLToMatrix failed:', e, htmlStr);
+    return { matrix: [], headerRows: 0, numCols: 0 };
+  }
+}
+
+function matrixToHTML(matrix, headerRows, numCols) {
+  if (!matrix || matrix.length === 0) return '<table><tbody><tr><td></td></tr></tbody></table>';
+  function renderRows(rows) {
+    return rows.map(row => {
+      const cells = [];
+      for (let c = 0; c < numCols; c++) {
+        const cell = row[c];
+        if (!cell || cell._covered) continue;
+        const tag = cell.isHeader ? 'th' : 'td';
+        const attrs = [];
+        if (cell.colspan > 1) attrs.push(`colspan="${cell.colspan}"`);
+        if (cell.rowspan > 1) attrs.push(`rowspan="${cell.rowspan}"`);
+        cells.push(`<${tag}${attrs.length ? ' '+attrs.join(' ') : ''}>${cell.content || ''}</${tag}>`);
+      }
+      return `<tr>${cells.join('')}</tr>`;
+    }).join('');
+  }
+  const hRows = matrix.slice(0, headerRows);
+  const bRows = matrix.slice(headerRows);
+  let html = '<table>';
+  if (hRows.length) html += `<thead>${renderRows(hRows)}</thead>`;
+  html += `<tbody>${renderRows(bRows)}</tbody></table>`;
+  return html;
+}
+
+function addEmptyRow(matrix, afterIdx, isHeader, numCols) {
+  const newRow = Array.from({length: numCols}, (_, c) => ({
+    id: newCellId(), content: '', isHeader, colspan: 1, rowspan: 1,
+  }));
+  const result = [...matrix];
+  result.splice(afterIdx + 1, 0, newRow);
+  return result;
+}
+
+function deleteRow(matrix, rIdx, headerRows) {
+  const result = matrix.map((row, ri) =>
+    row.map(cell => {
+      if (!cell || cell._covered) return cell;
+      if (ri < rIdx && ri + cell.rowspan - 1 >= rIdx) {
+        return { ...cell, rowspan: cell.rowspan - 1 };
+      }
+      return cell;
+    })
+  );
+  result.splice(rIdx, 1);
+  return rebuildCoveredMap(result, result.length, numColsOf(result));
+}
+
+function addColumn(matrix, afterIdx) {
+  return matrix.map(row => {
+    const newRow = [...row];
+    newRow.splice(afterIdx + 1, 0, { id: newCellId(), content: '', isHeader: false, colspan: 1, rowspan: 1 });
+    return newRow;
+  });
+}
+
+function deleteColumn(matrix, cIdx) {
+  return matrix.map(row => {
+    return row.map((cell, ci) => {
+      if (ci === cIdx) return null;
+      if (!cell || cell._covered) return cell;
+      if (ci < cIdx && ci + cell.colspan - 1 >= cIdx) {
+        return { ...cell, colspan: Math.max(1, cell.colspan - 1) };
+      }
+      return cell;
+    }).filter((_, ci) => ci !== cIdx);
+  });
+}
+
+function numColsOf(matrix) {
+  if (!matrix || matrix.length === 0) return 0;
+  return matrix[0].length;
+}
+
+function rebuildCoveredMap(matrix, numRows, numCols) {
+  const result = matrix.map(row => row.map(cell => (cell && cell._covered) ? null : cell));
+  result.forEach((row, rIdx) => {
+    row.forEach((cell, cIdx) => {
+      if (!cell) return;
+      for (let dr = 0; dr < cell.rowspan; dr++) {
+        for (let dc = 0; dc < cell.colspan; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const tr2 = rIdx + dr, tc2 = cIdx + dc;
+          if (tr2 < numRows && tc2 < numCols) result[tr2][tc2] = { _covered: true };
+        }
+      }
+    });
+  });
+  return result;
+}
+
+/* ============================================================
+   TABLE EDITOR COMPONENT
+   ============================================================ */
+function TableEditor({ htmlStr, onChange }) {
+  const { useState: us, useEffect: ue, useRef: ur } = React;
+  const [state, setState] = us(() => parseHTMLToMatrix(htmlStr));
+  const [selected, setSelected] = us(null);
+  const [editing, setEditing] = us(null);
+  const [editVal, setEditVal] = us('');
+  const inputRef = ur(null);
+
+  ue(() => {
+    if (editing && inputRef.current) inputRef.current.focus();
+  }, [editing]);
+
+  const { matrix, headerRows, numCols } = state;
+  const numRows = matrix.length;
+
+  function emit(newState) {
+    setState(newState);
+    onChange(matrixToHTML(newState.matrix, newState.headerRows, newState.numCols));
+  }
+
+  function selectCell(r, c) {
+    if (editing) commitEdit();
+    setSelected({r, c});
+  }
+
+  function startEdit(r, c) {
+    const cell = matrix[r][c];
+    if (!cell || cell._covered) return;
+    setEditing({r, c});
+    setEditVal(cell.content || '');
+    setSelected({r, c});
+  }
+
+  function commitEdit() {
+    if (!editing) return;
+    const {r, c} = editing;
+    const newMatrix = matrix.map((row, ri) => row.map((cell, ci) => {
+      if (ri === r && ci === c && cell && !cell._covered)
+        return { ...cell, content: editVal };
+      return cell;
+    }));
+    setEditing(null);
+    emit({ matrix: newMatrix, headerRows, numCols });
+  }
+
+  function updateCell(updates) {
+    if (!selected) return;
+    const {r, c} = selected;
+    const newMatrix = matrix.map((row, ri) => row.map((cell, ci) => {
+      if (ri === r && ci === c && cell && !cell._covered)
+        return { ...cell, ...updates };
+      return cell;
+    }));
+    const rebuilt = rebuildCoveredMap(newMatrix, numRows, numCols);
+    emit({ matrix: rebuilt, headerRows, numCols });
+  }
+
+  const selectedCell = selected ? matrix[selected.r]?.[selected.c] : null;
+
+  function doAddHeaderRow() {
+    const newM = addEmptyRow(matrix, headerRows - 1, true, numCols);
+    emit({ matrix: newM, headerRows: headerRows + 1, numCols });
+  }
+  function doAddDataRow() {
+    const newM = addEmptyRow(matrix, numRows - 1, false, numCols);
+    emit({ matrix: newM, headerRows, numCols });
+  }
+  function doDeleteRow(r) {
+    if (numRows <= 1) return;
+    const isHdr = r < headerRows;
+    const newM = deleteRow(matrix, r, headerRows);
+    const newHR = isHdr ? Math.max(0, headerRows - 1) : headerRows;
+    emit({ matrix: newM, headerRows: newHR, numCols: numColsOf(newM) });
+    setSelected(null);
+  }
+  function doAddCol() {
+    const newM = addColumn(matrix, numCols - 1);
+    emit({ matrix: newM, headerRows, numCols: numCols + 1 });
+  }
+  function doDeleteCol(c) {
+    if (numCols <= 1) return;
+    const newM = deleteColumn(matrix, c);
+    emit({ matrix: newM, headerRows, numCols: numCols - 1 });
+    setSelected(null);
+  }
+
+  const tbBtn = "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors";
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-50 rounded-lg border border-slate-200">
+        <button onClick={doAddHeaderRow} className={`${tbBtn} bg-indigo-50 text-indigo-700 hover:bg-indigo-100`}>
+          <Ico.Plus className="w-3.5 h-3.5"/> Header Row
+        </button>
+        <button onClick={doAddDataRow} className={`${tbBtn} bg-slate-100 text-slate-700 hover:bg-slate-200`}>
+          <Ico.Plus className="w-3.5 h-3.5"/> Data Row
+        </button>
+        <button onClick={doAddCol} className={`${tbBtn} bg-slate-100 text-slate-700 hover:bg-slate-200`}>
+          <Ico.Plus className="w-3.5 h-3.5"/> Column
+        </button>
+        <div className="w-px h-5 bg-slate-300 mx-1"/>
+        {selected && selectedCell && !selectedCell._covered && (
+          <>
+            <label className={`${tbBtn} gap-1.5 cursor-pointer select-none ${selectedCell.isHeader ? 'bg-indigo-100 text-indigo-800 ring-1 ring-indigo-300' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+              <input type="checkbox" className="accent-indigo-600 w-3 h-3"
+                checked={selectedCell.isHeader}
+                onChange={e => updateCell({isHeader: e.target.checked})}
+              /> Header cell
+            </label>
+            <div className="flex items-center gap-1 text-xs text-slate-600">
+              <span className="pl-1">Colspan</span>
+              <input type="number" min="1" max="20" value={selectedCell.colspan}
+                className="w-12 border border-slate-300 rounded px-1 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                onChange={e => updateCell({colspan: Math.max(1, parseInt(e.target.value)||1)})}
+              />
+              <span>Rowspan</span>
+              <input type="number" min="1" max="20" value={selectedCell.rowspan}
+                className="w-12 border border-slate-300 rounded px-1 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                onChange={e => updateCell({rowspan: Math.max(1, parseInt(e.target.value)||1)})}
+              />
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="overflow-auto scrollbar-thin rounded-lg border border-slate-200">
+        <table style={{borderCollapse:'collapse', tableLayout:'auto', minWidth:'100%'}}>
+          {headerRows > 0 && (
+            <thead>
+              {matrix.slice(0, headerRows).map((row, rIdx) => (
+                <tr key={rIdx} className="group">
+                  {Array.from({length: numCols}).map((_, cIdx) => {
+                    const cell = row[cIdx];
+                    if (cell && cell._covered) return null;
+                    if (!cell) return <th key={cIdx} className="tbl-cell tbl-header-cell"/>;
+                    const isSel = selected && selected.r === rIdx && selected.c === cIdx;
+                    const isEdit = editing && editing.r === rIdx && editing.c === cIdx;
+                    return (
+                      <th key={cIdx} colSpan={cell.colspan} rowSpan={cell.rowspan}
+                        className={`tbl-cell tbl-header-cell relative ${isSel ? 'cell-selected' : ''}`}
+                        onClick={() => selectCell(rIdx, cIdx)}
+                        onDoubleClick={() => startEdit(rIdx, cIdx)}
+                      >
+                        {isEdit ? (
+                          <input ref={inputRef} value={editVal}
+                            className="w-full bg-transparent focus:outline-none text-sm font-semibold"
+                            onChange={e => setEditVal(e.target.value)}
+                            onBlur={commitEdit}
+                            onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();commitEdit();}if(e.key==='Escape'){setEditing(null);} }}
+                          />
+                        ) : cell.content || <span className="text-slate-400 text-xs italic">empty</span>}
+                        <button onClick={e=>{e.stopPropagation();doDeleteCol(cIdx);}}
+                          className="col-del-btn w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center hover:bg-red-600"
+                          title="Delete column">×</button>
+                        <button onClick={e=>{e.stopPropagation();doDeleteRow(rIdx);}}
+                          className="row-btn absolute left-full top-1/2 -translate-y-1/2 ml-1 w-4 h-4 rounded-full bg-red-400 text-white text-xs flex items-center justify-center hover:bg-red-600 z-10"
+                          title="Delete row">×</button>
+                      </th>
+                    );
+                  })}
+                </tr>
+              ))}
+            </thead>
+          )}
+          <tbody>
+            {matrix.slice(headerRows).map((row, bIdx) => {
+              const rIdx = bIdx + headerRows;
+              return (
+                <tr key={rIdx} className="group">
+                  {Array.from({length: numCols}).map((_, cIdx) => {
+                    const cell = row[cIdx];
+                    if (cell && cell._covered) return null;
+                    if (!cell) return <td key={cIdx} className="tbl-cell tbl-data-cell"/>;
+                    const isSel = selected && selected.r === rIdx && selected.c === cIdx;
+                    const isEdit = editing && editing.r === rIdx && editing.c === cIdx;
+                    return (
+                      <td key={cIdx} colSpan={cell.colspan} rowSpan={cell.rowspan}
+                        className={`tbl-cell ${cell.isHeader ? 'tbl-header-cell' : 'tbl-data-cell'} relative ${isSel ? 'cell-selected' : ''}`}
+                        onClick={() => selectCell(rIdx, cIdx)}
+                        onDoubleClick={() => startEdit(rIdx, cIdx)}
+                      >
+                        {isEdit ? (
+                          <textarea ref={inputRef} value={editVal} rows={Math.max(1, editVal.split('\n').length)}
+                            className="w-full bg-transparent focus:outline-none resize-none text-sm"
+                            onChange={e => setEditVal(e.target.value)}
+                            onBlur={commitEdit}
+                            onKeyDown={e => { if(e.key==='Escape'){setEditing(null);} }}
+                          />
+                        ) : cell.content || <span className="text-slate-300 text-xs italic">empty</span>}
+                        {cIdx === 0 && (
+                          <button onClick={e=>{e.stopPropagation();doDeleteRow(rIdx);}}
+                            className="row-btn absolute left-full top-1/2 -translate-y-1/2 ml-1 w-4 h-4 rounded-full bg-red-400 text-white text-xs flex items-center justify-center hover:bg-red-600 z-10"
+                            title="Delete row">×</button>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-slate-400">Click to select • Double-click to edit • Use toolbar to add/remove rows & columns</p>
+    </div>
+  );
+}
+
+/* ============================================================
+   INSTANCE EDITOR MODAL
+   ============================================================ */
+function InstanceEditorModal({ instance, taskId, onSave, onClose }) {
+  const { useState: us, useRef: ur } = React;
+  const [tab, setTab] = us('qa');
+  const [question, setQuestion] = us(instance.question);
+  const [answer, setAnswer] = us(instance.answer);
+  const [tables, setTables] = us(instance.tables || []);
+  const [tableIdx, setTableIdx] = us(0);
+  const [saving, setSaving] = us(false);
+  const [saved, setSaved] = us(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await fetch(`/api/tasks/${taskId}/instances/${instance.id}`, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ question, answer, tables }),
+      });
+      onSave({ ...instance, question, answer, tables });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function updateTable(idx, newHtml) {
+    setTables(prev => prev.map((t, i) => i === idx ? newHtml : t));
+  }
+
+  function addTable() {
+    setTables(prev => [...prev, '<table><thead><tr><th>Column 1</th><th>Column 2</th></tr></thead><tbody><tr><td></td><td></td></tr></tbody></table>']);
+    setTableIdx(tables.length);
+  }
+
+  function removeTable(idx) {
+    if (tables.length <= 1) return;
+    setTables(prev => prev.filter((_, i) => i !== idx));
+    setTableIdx(Math.min(idx, tables.length - 2));
+  }
+
+  const labelCls = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5";
+  const inputCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-shadow";
+
+  return (
+    <>
+      <div className="modal-backdrop" onClick={onClose}/>
+      <div className="modal-panel slide-right">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Edit Instance #{instance.id + 1}</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Method: <span className="font-medium text-indigo-600">{instance.method}</span>
+              {' · '}Perturbation: <span className="font-medium text-slate-700">{instance.perturbation}</span>
+              {' · '}{instance.num_tables} table(s)
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors">
+            <Ico.X className="w-5 h-5"/>
+          </button>
+        </div>
+
+        <div className="flex border-b border-slate-100 px-6 flex-shrink-0">
+          {['qa','tables'].map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`py-3 px-4 text-sm font-medium transition-colors mr-2 ${tab===t ? 'tab-active' : 'tab-inactive hover:text-slate-700'}`}>
+              {t === 'qa' ? 'Question & Answer' : `Tables (${tables.length})`}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
+          {tab === 'qa' && (
+            <div className="space-y-5 fade-up">
+              <div>
+                <label className={labelCls}>Question</label>
+                <textarea value={question} onChange={e => setQuestion(e.target.value)}
+                  rows={4} className={inputCls + ' resize-y'} placeholder="Enter the question..."/>
+              </div>
+              <div>
+                <label className={labelCls}>Expected Answer</label>
+                <input value={answer} onChange={e => setAnswer(e.target.value)}
+                  className={inputCls} placeholder="Enter the answer..."/>
+              </div>
+              {Array.isArray(instance.sql_queries) && instance.sql_queries.length > 0 && (
+                <div>
+                  <label className={labelCls}>SQL Queries (read-only)</label>
+                  <div className="space-y-1.5">
+                    {instance.sql_queries.map((q, i) => (
+                      <pre key={i} className="text-xs bg-slate-900 text-green-400 rounded-lg p-3 overflow-x-auto scrollbar-thin font-mono">
+                        {typeof q === 'string' ? q : JSON.stringify(q)}
+                      </pre>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === 'tables' && (
+            <div className="fade-up">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-1 flex-1 flex-wrap">
+                  {tables.map((_, i) => (
+                    <button key={i} onClick={() => setTableIdx(i)}
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${i === tableIdx ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                      Table {i + 1}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={addTable}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors">
+                  <Ico.Plus className="w-3.5 h-3.5"/> Add
+                </button>
+                {tables.length > 1 && (
+                  <button onClick={() => removeTable(tableIdx)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
+                    <Ico.Minus className="w-3.5 h-3.5"/> Remove
+                  </button>
+                )}
+              </div>
+
+              {tables[tableIdx] !== undefined && (
+                <TableEditor
+                  key={tableIdx}
+                  htmlStr={tables[tableIdx]}
+                  onChange={html => updateTable(tableIdx, html)}
+                />
+              )}
+              {tables.length === 0 && (
+                <div className="text-center py-12 text-slate-400">
+                  <Ico.Table className="w-8 h-8 mx-auto mb-2 opacity-50"/>
+                  <p className="text-sm">No tables. Click "Add" to create one.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50 flex-shrink-0">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-60">
+            {saving ? <Ico.Loader className="w-4 h-4 spin"/> : saved ? <Ico.Check className="w-4 h-4"/> : <Ico.Save className="w-4 h-4"/>}
+            {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   CONFIG PANEL
+   ============================================================ */
+function ConfigPanel({ params, onChange, onGenerate, disabled }) {
+  const selectCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white appearance-none cursor-pointer";
+  const numberCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400";
+  const labelCls = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5";
+
+  function field(label, key, el) {
+    return (
+      <div>
+        <label className={labelCls}>{label}</label>
+        {el}
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+          <Ico.Database className="w-4 h-4 text-indigo-600"/>
+        </div>
+        <div>
+          <h2 className="text-base font-bold text-slate-900">Generation Parameters</h2>
+          <p className="text-xs text-slate-500">Configure the Gradino benchmark generator</p>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {field('Domain', 'domain',
+          <select value={params.domain} onChange={e=>onChange({...params,domain:e.target.value})} className={selectCls} disabled={disabled}>
+            <option value="environmental">Environmental</option>
+            <option value="finance">Finance</option>
+            <option value="healthcare">Healthcare</option>
+            <option value="products">Products</option>
+          </select>
+        )}
+        {field('Question Type', 'question_type',
+          <select value={params.question_type} onChange={e=>onChange({...params,question_type:e.target.value})} className={selectCls} disabled={disabled}>
+            <option value="sum">Sum</option>
+            <option value="average">Average</option>
+            <option value="superlative">Superlative (Max/Min)</option>
+          </select>
+        )}
+        <div className="grid grid-cols-2 gap-4">
+          {field('Number of Tables', 'num_tables',
+            <input type="number" min="-1" max="20" value={params.num_tables} disabled={disabled}
+              onChange={e=>onChange({...params,num_tables:parseInt(e.target.value)||3})} className={numberCls}/>
+          )}
+          {field('Num Samples', 'num_samples',
+            <input type="number" min="1" max="500" value={params.num_samples} disabled={disabled}
+              onChange={e=>onChange({...params,num_samples:parseInt(e.target.value)||10})} className={numberCls}/>
+          )}
+          {field('Col. Cardinality', 'col_cardinality',
+            <input type="number" min="2" max="100" value={params.col_cardinality} disabled={disabled}
+              onChange={e=>onChange({...params,col_cardinality:parseInt(e.target.value)||20})} className={numberCls}/>
+          )}
+          {field('Num Columns', 'num_columns',
+            <input type="number" min="2" max="100" value={params.num_columns} disabled={disabled}
+              onChange={e=>onChange({...params,num_columns:parseInt(e.target.value)||21})} className={numberCls}/>
+          )}
+        </div>
+        <div className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg">
+          <div>
+            <p className="text-sm font-medium text-slate-700">Sequential Mode</p>
+            <p className="text-xs text-slate-500">Multi-hop questions across tables</p>
+          </div>
+          <button onClick={()=>onChange({...params,sequential:!params.sequential})} disabled={disabled}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${params.sequential ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${params.sequential ? 'translate-x-6' : 'translate-x-1'}`}/>
+          </button>
+        </div>
+
+        {params.num_tables === -1 && (
+          <div className="flex gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <Ico.AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5"/>
+            <p className="text-xs text-amber-700">
+              <strong>Ablation mode:</strong> Setting num_tables to -1 runs ablations over [2, 3, 5, 10, 20] tables automatically.
+            </p>
+          </div>
+        )}
+
+        <button onClick={onGenerate} disabled={disabled}
+          className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-semibold rounded-xl transition-colors text-sm shadow-sm">
+          <Ico.Play className="w-4 h-4"/>
+          Generate Benchmark
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   INSTANCE LIST
+   ============================================================ */
+const PAGE_SIZE = 12;
+
+function InstanceList({ instances, taskId, onEdit }) {
+  const { useState: us } = React;
+  const [page, setPage] = us(0);
+  const totalPages = Math.ceil(instances.length / PAGE_SIZE);
+  const slice = instances.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const methodColor = {'sum':'bg-blue-100 text-blue-700','average':'bg-purple-100 text-purple-700','superlative':'bg-amber-100 text-amber-700'};
+  const pertColor = {'unit_converted':'bg-emerald-100 text-emerald-700','not_unit_converted':'bg-slate-100 text-slate-600'};
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3">
+        {slice.map(inst => (
+          <div key={inst.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:border-indigo-300 hover:shadow-sm transition-all fade-up group">
+            <div className="flex items-start gap-3">
+              <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-indigo-600 mt-0.5">
+                {inst.id + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-slate-800 leading-relaxed line-clamp-2 font-medium">
+                  {inst.question || <span className="text-slate-400 italic">No question</span>}
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  <span className={`badge ${methodColor[inst.method] || 'bg-slate-100 text-slate-600'}`}>{inst.method}</span>
+                  <span className={`badge ${pertColor[inst.perturbation] || 'bg-slate-100 text-slate-600'}`}>{inst.perturbation}</span>
+                  <span className="badge bg-slate-100 text-slate-600">{inst.num_tables} table(s)</span>
+                  <span className="ml-auto text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                    Ans: {String(inst.answer).slice(0, 20)}{inst.answer && String(inst.answer).length > 20 ? '…' : ''}
+                  </span>
+                </div>
+              </div>
+              <button onClick={() => onEdit(inst)}
+                className="flex-shrink-0 p-2 rounded-lg bg-slate-50 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100">
+                <Ico.Pencil className="w-4 h-4"/>
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <button onClick={() => setPage(p => Math.max(0, p-1))} disabled={page===0}
+            className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30 transition-colors">
+            <Ico.ChevronLeft className="w-4 h-4"/>
+          </button>
+          <span className="text-sm text-slate-600 font-medium">Page {page+1} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages-1, p+1))} disabled={page===totalPages-1}
+            className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30 transition-colors">
+            <Ico.ChevronRight className="w-4 h-4"/>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   EVALUATE MODAL
+   ============================================================ */
+const MODEL_DEFAULTS = {
+  openai: 'gpt-4o-mini',
+  claude: 'claude-haiku-4-5-20251001',
+  gemini: 'gemini-2.0-flash',
+  huggingface: 'Qwen/Qwen2.5-7B-Instruct',
+};
+const MODEL_LABELS = {
+  openai: 'OpenAI',
+  claude: 'Claude (Anthropic)',
+  gemini: 'Gemini (Google)',
+  huggingface: 'HuggingFace (vLLM)',
+};
+
+function EvaluateModal({ taskId, instanceCount, defaultApiKey, onClose, onDone }) {
+  const { useState: us, useEffect: ue, useRef: ur } = React;
+  const [modelType, setModelType] = us('openai');
+  const [modelName, setModelName] = us(MODEL_DEFAULTS.openai);
+  const [evalApiKey, setEvalApiKey] = us(defaultApiKey || '');
+  const [vllmUrl, setVllmUrl] = us('http://vllm:8000/v1');
+  const [showKey, setShowKey] = us(false);
+  const [phase, setPhase] = us('config'); // config | running | done | error
+  const [progress, setProgress] = us(0);
+  const [current, setCurrent] = us(0);
+  const [total, setTotal] = us(0);
+  const [statusMsg, setStatusMsg] = us('');
+  const [accuracy, setAccuracy] = us(null);
+  const [avgF1, setAvgF1] = us(null);
+  const [correct, setCorrect] = us(null);
+  const [errorMsg, setErrorMsg] = us('');
+  const esRef = ur(null);
+
+  ue(() => {
+    return () => { if (esRef.current) esRef.current.close(); };
+  }, []);
+
+  function handleTypeChange(t) {
+    setModelType(t);
+    setModelName(MODEL_DEFAULTS[t]);
+    if (t === 'openai') setEvalApiKey(defaultApiKey || '');
+    else setEvalApiKey('');
+  }
+
+  async function handleStart() {
+    setPhase('running');
+    setProgress(0); setCurrent(0); setTotal(instanceCount);
+    try {
+      const res = await fetch('/api/evaluate', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          task_id: taskId,
+          model_type: modelType,
+          model_name: modelName,
+          api_key: evalApiKey,
+          base_url: modelType === 'huggingface' ? vllmUrl : '',
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to start evaluation');
+      }
+      const { eval_id } = await res.json();
+
+      const es = new EventSource(`/api/evaluate/${eval_id}/stream`);
+      esRef.current = es;
+      es.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.status === 'not_found') { es.close(); setPhase('error'); setErrorMsg('Eval task not found'); return; }
+        setProgress(msg.progress || 0);
+        setCurrent(msg.current || 0);
+        setTotal(msg.total || instanceCount);
+        setStatusMsg(msg.status_message || '');
+        if (msg.status === 'completed') {
+          es.close();
+          setAccuracy(msg.accuracy);
+          setAvgF1(msg.avg_f1);
+          setCorrect(msg.correct);
+          setPhase('done');
+          if (onDone) onDone();
+        } else if (msg.status === 'error') {
+          es.close();
+          setPhase('error');
+          setErrorMsg(msg.error || 'Unknown error');
+        }
+      };
+      es.onerror = () => { es.close(); setPhase('error'); setErrorMsg('Connection lost'); };
+    } catch(err) {
+      setPhase('error');
+      setErrorMsg(String(err));
+    }
+  }
+
+  const pct = Math.round(progress * 100);
+  const labelCls = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5";
+  const inputCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-shadow";
+
+  return (
+    <>
+      <div className="modal-backdrop" onClick={phase === 'running' ? undefined : onClose}/>
+      <div className="modal-panel-sm fade-up">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
+              <Ico.Flask className="w-4 h-4 text-violet-600"/>
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Evaluate Model</h2>
+              <p className="text-xs text-slate-500">{instanceCount} instance(s) · Task {taskId.slice(0,8)}…</p>
+            </div>
+          </div>
+          {phase !== 'running' && (
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+              <Ico.X className="w-5 h-5"/>
+            </button>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          {phase === 'config' && (
+            <div className="space-y-4 fade-up">
+              <div>
+                <label className={labelCls}>Model Provider</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(MODEL_LABELS).map(([key, label]) => (
+                    <button key={key} onClick={() => handleTypeChange(key)}
+                      className={`px-3 py-2 rounded-lg text-xs font-semibold text-left transition-all border ${modelType === key ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Model Name</label>
+                <input value={modelName} onChange={e => setModelName(e.target.value)}
+                  className={inputCls} placeholder={MODEL_DEFAULTS[modelType]}/>
+              </div>
+              <div>
+                <label className={labelCls}>API Key</label>
+                <div className="relative">
+                  <input type={showKey ? 'text' : 'password'} value={evalApiKey}
+                    onChange={e => setEvalApiKey(e.target.value)}
+                    className={inputCls + ' pr-16'}
+                    placeholder={modelType === 'huggingface' ? 'Leave empty for local vLLM' : 'Required'}/>
+                  <button onClick={() => setShowKey(v => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 font-medium px-1">
+                    {showKey ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {modelType === 'huggingface' && (
+                  <p className="text-xs text-slate-400 mt-1">Leave blank for unauthenticated local vLLM</p>
+                )}
+              </div>
+              {modelType === 'huggingface' && (
+                <div>
+                  <label className={labelCls}>vLLM Base URL</label>
+                  <input value={vllmUrl} onChange={e => setVllmUrl(e.target.value)}
+                    className={inputCls} placeholder="http://vllm:8000/v1"/>
+                  <p className="text-xs text-slate-400 mt-1">Start vLLM: <code className="bg-slate-100 px-1 rounded text-slate-600">docker compose --profile gpu up</code></p>
+                </div>
+              )}
+              {modelType === 'gemini' && (
+                <p className="text-xs text-slate-500 bg-blue-50 border border-blue-100 rounded-lg p-2.5">
+                  Uses Google's OpenAI-compatible endpoint. Model names: <code className="text-blue-700">gemini-2.0-flash</code>, <code className="text-blue-700">gemini-1.5-pro</code>
+                </p>
+              )}
+            </div>
+          )}
+
+          {phase === 'running' && (
+            <div className="space-y-4 fade-up">
+              <div className="flex items-center gap-3">
+                <Ico.Loader className="w-5 h-5 text-indigo-600 spin"/>
+                <div>
+                  <p className="font-semibold text-slate-900">Running evaluation…</p>
+                  <p className="text-xs text-slate-500">{statusMsg}</p>
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-xs text-slate-500 mb-1">
+                  <span>{pct}% complete</span>
+                  <span>{current} / {total} instances</span>
+                </div>
+                <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="progress-bar h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500"
+                    style={{width: `${pct}%`}}/>
+                </div>
+              </div>
+              <p className="text-xs text-slate-400">Evaluation runs in the background. Do not close the browser.</p>
+            </div>
+          )}
+
+          {phase === 'done' && (
+            <div className="space-y-4 fade-up">
+              <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                <Ico.Check className="w-6 h-6 text-emerald-600 flex-shrink-0"/>
+                <div>
+                  <p className="font-bold text-emerald-800">Evaluation complete</p>
+                  <p className="text-xs text-emerald-600">{correct}/{total} correct answers</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-indigo-50 rounded-xl p-4 text-center">
+                  <p className="text-3xl font-extrabold text-indigo-700">{(accuracy * 100).toFixed(1)}%</p>
+                  <p className="text-xs text-indigo-500 font-medium mt-1">Accuracy</p>
+                </div>
+                <div className="bg-violet-50 rounded-xl p-4 text-center">
+                  <p className="text-3xl font-extrabold text-violet-700">{(avgF1 * 100).toFixed(1)}%</p>
+                  <p className="text-xs text-violet-500 font-medium mt-1">Avg F1</p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500 text-center">Results saved to Leaderboard</p>
+            </div>
+          )}
+
+          {phase === 'error' && (
+            <div className="space-y-3 fade-up">
+              <div className="flex items-start gap-3 p-4 bg-red-50 rounded-xl border border-red-200">
+                <Ico.AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5"/>
+                <div>
+                  <p className="font-bold text-red-700">Evaluation failed</p>
+                  <p className="text-xs text-red-600 mt-1 font-mono break-all">{errorMsg}</p>
+                </div>
+              </div>
+              <button onClick={() => setPhase('config')}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition-colors">
+                <Ico.RefreshCw className="w-4 h-4"/> Try again
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50">
+          <button onClick={onClose} disabled={phase === 'running'}
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 disabled:opacity-40 transition-colors">
+            {phase === 'done' ? 'Close' : 'Cancel'}
+          </button>
+          {phase === 'config' && (
+            <button onClick={handleStart}
+              className="flex items-center gap-2 px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-lg transition-colors">
+              <Ico.Play className="w-4 h-4"/> Start Evaluation
+            </button>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   SHARED CONSTANTS
+   ============================================================ */
+const TYPE_COLORS = {
+  openai: 'bg-green-100 text-green-700',
+  claude: 'bg-orange-100 text-orange-700',
+  gemini: 'bg-blue-100 text-blue-700',
+  huggingface: 'bg-yellow-100 text-yellow-700',
+};
+
+/* ============================================================
+   EVAL DETAIL MODAL
+   ============================================================ */
+function EvalDetailModal({ evalId, evalInfo, onClose }) {
+  const { useState: us, useEffect: ue } = React;
+  const [predictions, setPredictions] = us([]);
+  const [loading, setLoading] = us(true);
+  const [fetchError, setFetchError] = us('');
+  const [filter, setFilter] = us('all');
+  const [page, setPage] = us(0);
+  const [expanded, setExpanded] = us({});
+
+  ue(() => {
+    fetch(`/api/evaluate/${evalId}/predictions`)
+      .then(r => { if (!r.ok) throw new Error('Predictions not found'); return r.json(); })
+      .then(data => { setPredictions(data.predictions || []); setLoading(false); })
+      .catch(e => { setFetchError(String(e)); setLoading(false); });
+  }, [evalId]);
+
+  function toggle(id, key) {
+    setExpanded(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [key]: !(prev[id] || {})[key] } }));
+  }
+
+  const PSIZE = 8;
+  const correct = predictions.filter(p => p.match);
+  const wrong = predictions.filter(p => !p.match);
+  const filtered = filter === 'correct' ? correct : filter === 'wrong' ? wrong : predictions;
+  const totalPages = Math.ceil(filtered.length / PSIZE);
+  const slice = filtered.slice(page * PSIZE, (page + 1) * PSIZE);
+
+  return (
+    <>
+      <div className="modal-backdrop" onClick={onClose}/>
+      <div className="modal-panel slide-right">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <h2 className="text-lg font-bold text-slate-900">{evalInfo.model_name}</h2>
+              <span className={`badge ${TYPE_COLORS[evalInfo.model_type] || 'bg-slate-100 text-slate-600'}`}>{evalInfo.model_type}</span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Accuracy: <strong className="text-indigo-700">{evalInfo.accuracy != null ? (evalInfo.accuracy*100).toFixed(1) : '—'}%</strong>
+              {' · '}F1: <strong>{evalInfo.avg_f1 != null ? (evalInfo.avg_f1*100).toFixed(1) : '—'}%</strong>
+              {' · '}{evalInfo.total} instances
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors">
+            <Ico.X className="w-5 h-5"/>
+          </button>
+        </div>
+
+        {/* Filter tabs */}
+        <div className="flex border-b border-slate-100 px-6 flex-shrink-0">
+          {[['all', `All (${predictions.length})`],
+            ['correct', `Correct ✓ (${correct.length})`],
+            ['wrong', `Wrong ✗ (${wrong.length})`]].map(([key, label]) => (
+            <button key={key} onClick={() => { setFilter(key); setPage(0); }}
+              className={`py-3 px-4 text-sm font-medium transition-colors mr-2 ${filter===key ? 'tab-active' : 'tab-inactive hover:text-slate-700'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-5 space-y-4">
+          {loading && (
+            <div className="flex items-center justify-center py-20">
+              <Ico.Loader className="w-6 h-6 text-indigo-400 spin"/>
+            </div>
+          )}
+          {fetchError && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">{fetchError}</div>
+          )}
+          {!loading && !fetchError && slice.length === 0 && (
+            <div className="text-center py-12 text-slate-400 text-sm">No predictions to show.</div>
+          )}
+
+          {slice.map(pred => {
+            const exp = expanded[pred.id] || {};
+            const hasTables = Array.isArray(pred.tables) && pred.tables.length > 0;
+            const hasReasoning = !!pred.reasoning;
+            return (
+              <div key={pred.id} className={`rounded-xl border p-4 space-y-3 ${pred.match ? 'border-emerald-200 bg-emerald-50/40' : 'border-red-200 bg-red-50/40'}`}>
+                {/* Top row: status + question */}
+                <div className="flex items-start gap-3">
+                  <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center font-bold text-sm ${pred.match ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                    {pred.match ? '✓' : '✗'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Instance #{pred.id + 1}</p>
+                    <p className="text-sm text-slate-800 font-medium leading-relaxed">{pred.question}</p>
+                  </div>
+                </div>
+
+                {/* Gold vs Predicted */}
+                <div className="grid grid-cols-2 gap-3 ml-10">
+                  <div className="bg-white rounded-lg border border-slate-200 p-3">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Gold Answer</p>
+                    <p className="text-sm font-mono font-bold text-slate-800 break-all">{pred.label_display || pred.label}</p>
+                  </div>
+                  <div className={`rounded-lg border p-3 ${pred.match ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Model Answer</p>
+                    <p className={`text-sm font-mono font-bold break-all ${pred.match ? 'text-emerald-700' : 'text-red-600'}`}>{pred.prediction_display || pred.prediction || <span className="italic text-slate-400">empty</span>}</p>
+                  </div>
+                </div>
+
+                {/* Expand buttons */}
+                <div className="flex flex-wrap gap-2 ml-10">
+                  {hasTables && (
+                    <button onClick={() => toggle(pred.id, 'tables')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${exp.tables ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                      <Ico.Table className="w-3.5 h-3.5"/>
+                      {exp.tables ? 'Hide' : 'Show'} Tables ({pred.tables.length})
+                      <Ico.ChevronDown className="w-3 h-3 chevron-anim" style={{transform: exp.tables ? 'rotate(180deg)' : 'rotate(0deg)'}}/>
+                    </button>
+                  )}
+                  {hasReasoning ? (
+                    <button onClick={() => toggle(pred.id, 'reasoning')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${exp.reasoning ? 'bg-violet-100 text-violet-700 border-violet-300' : 'bg-violet-50 text-violet-600 border-violet-200 hover:bg-violet-100'}`}>
+                      <Ico.Brain className="w-3.5 h-3.5"/>
+                      {exp.reasoning ? 'Hide' : 'Show'} Chain-of-Thought
+                      <Ico.ChevronDown className="w-3 h-3 chevron-anim" style={{transform: exp.reasoning ? 'rotate(180deg)' : 'rotate(0deg)'}}/>
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-amber-600 bg-amber-50 border border-amber-200" title="Re-run this evaluation to capture tables and chain-of-thought reasoning">
+                      <Ico.Brain className="w-3.5 h-3.5"/> No reasoning — re-run evaluation to capture CoT
+                    </span>
+                  )}
+                </div>
+
+                {/* Tables */}
+                {exp.tables && hasTables && (
+                  <div className="ml-10 space-y-3">
+                    {pred.tables.map((t, ti) => (
+                      <div key={ti} className="eval-tbl overflow-x-auto rounded-lg border border-slate-200 bg-white p-3 scrollbar-thin">
+                        {pred.tables.length > 1 && <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Table {ti + 1}</p>}
+                        <div dangerouslySetInnerHTML={{__html: t}}/>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Chain-of-Thought Reasoning */}
+                {exp.reasoning && hasReasoning && (
+                  <div className="ml-10">
+                    <p className="text-[10px] font-semibold text-violet-500 uppercase tracking-wide mb-1.5">Full chain-of-thought response</p>
+                    <pre className="text-xs bg-slate-900 text-slate-200 rounded-lg p-4 overflow-x-auto overflow-y-auto scrollbar-thin font-mono whitespace-pre-wrap break-words max-h-80">
+                      {pred.reasoning}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Pagination footer */}
+        <div className="flex items-center justify-between px-6 py-3 border-t border-slate-100 bg-slate-50 flex-shrink-0">
+          <span className="text-xs text-slate-400">{filtered.length} prediction(s)</span>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPage(p => Math.max(0, p-1))} disabled={page===0}
+                className="p-1.5 rounded-lg hover:bg-slate-200 disabled:opacity-30 transition-colors">
+                <Ico.ChevronLeft className="w-4 h-4"/>
+              </button>
+              <span className="text-sm text-slate-600 font-medium">{page+1} / {totalPages}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages-1, p+1))} disabled={page===totalPages-1}
+                className="p-1.5 rounded-lg hover:bg-slate-200 disabled:opacity-30 transition-colors">
+                <Ico.ChevronRight className="w-4 h-4"/>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   HISTORY PAGE
+   ============================================================ */
+function HistoryPage({ onNavigate, defaultApiKey }) {
+  const { useState: us, useEffect: ue } = React;
+  const [tasks, setTasks] = us([]);
+  const [loading, setLoading] = us(true);
+  const [filterDomain, setFilterDomain] = us('');
+  const [filterQtype, setFilterQtype] = us('');
+  const [filterStatus, setFilterStatus] = us('');
+  const [evaluatingTask, setEvaluatingTask] = us(null);
+  const [expandedTaskId, setExpandedTaskId] = us(null);
+  const [taskInstancesCache, setTaskInstancesCache] = us({});
+  const [instancesLoading, setInstancesLoading] = us({});
+  const [editingInstance, setEditingInstance] = us(null);
+  const [editingTaskId, setEditingTaskId] = us(null);
+
+  async function loadTaskInstances(taskId) {
+    if (taskInstancesCache[taskId] !== undefined) return;
+    setInstancesLoading(prev => ({ ...prev, [taskId]: true }));
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/instances`);
+      const data = await res.json();
+      setTaskInstancesCache(prev => ({ ...prev, [taskId]: data.instances || [] }));
+    } catch(e) {
+      setTaskInstancesCache(prev => ({ ...prev, [taskId]: [] }));
+    } finally {
+      setInstancesLoading(prev => ({ ...prev, [taskId]: false }));
+    }
+  }
+
+  function toggleExpand(taskId) {
+    if (expandedTaskId === taskId) {
+      setExpandedTaskId(null);
+    } else {
+      setExpandedTaskId(taskId);
+      loadTaskInstances(taskId);
+    }
+  }
+
+  function handleSaveHistoryInstance(taskId, updated) {
+    setTaskInstancesCache(prev => ({
+      ...prev,
+      [taskId]: (prev[taskId] || []).map(i => i.id === updated.id ? updated : i),
+    }));
+  }
+
+  async function loadHistory() {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterDomain) params.set('domain', filterDomain);
+      if (filterQtype) params.set('question_type', filterQtype);
+      if (filterStatus) params.set('status', filterStatus);
+      const res = await fetch(`/api/history?${params}`);
+      const data = await res.json();
+      setTasks(data.tasks || []);
+    } catch(e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  ue(() => { loadHistory(); }, [filterDomain, filterQtype, filterStatus]);
+
+  const statusBadge = (s) => {
+    const map = {
+      completed: 'bg-emerald-100 text-emerald-700',
+      running: 'bg-blue-100 text-blue-700',
+      error: 'bg-red-100 text-red-700',
+      stopped: 'bg-amber-100 text-amber-700',
+    };
+    return map[s] || 'bg-slate-100 text-slate-600';
+  };
+
+  const selCls = "border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white";
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900">Generation History</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{tasks.length} run(s) found</p>
+        </div>
+        <button onClick={loadHistory} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 text-sm font-medium text-slate-600 transition-colors">
+          <Ico.RefreshCw className="w-4 h-4"/> Refresh
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex flex-wrap gap-3 items-center">
+        <Ico.Filter className="w-4 h-4 text-slate-400"/>
+        <select value={filterDomain} onChange={e=>setFilterDomain(e.target.value)} className={selCls}>
+          <option value="">All Domains</option>
+          <option value="environmental">Environmental</option>
+          <option value="finance">Finance</option>
+          <option value="healthcare">Healthcare</option>
+          <option value="products">Products</option>
+        </select>
+        <select value={filterQtype} onChange={e=>setFilterQtype(e.target.value)} className={selCls}>
+          <option value="">All Question Types</option>
+          <option value="sum">Sum</option>
+          <option value="average">Average</option>
+          <option value="superlative">Superlative</option>
+        </select>
+        <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className={selCls}>
+          <option value="">All Statuses</option>
+          <option value="completed">Completed</option>
+          <option value="running">Running</option>
+          <option value="error">Error</option>
+          <option value="stopped">Stopped</option>
+        </select>
+        {(filterDomain || filterQtype || filterStatus) && (
+          <button onClick={()=>{setFilterDomain('');setFilterQtype('');setFilterStatus('');}}
+            className="text-xs text-slate-400 hover:text-slate-600 underline">Clear filters</button>
+        )}
+      </div>
+
+      {/* Task list */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Ico.Loader className="w-6 h-6 text-indigo-400 spin"/>
+        </div>
+      ) : tasks.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 py-16 flex flex-col items-center text-center">
+          <Ico.History className="w-10 h-10 text-slate-300 mb-3"/>
+          <p className="text-slate-600 font-semibold">No generation runs found</p>
+          <p className="text-sm text-slate-400 mt-1">Generate a dataset first, then come back here.</p>
+          <button onClick={() => onNavigate('generate')}
+            className="mt-4 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors">
+            Go to Generate
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {tasks.map(task => {
+            const p = task.params || {};
+            const isExpanded = expandedTaskId === task.task_id;
+            const cachedInsts = taskInstancesCache[task.task_id];
+            const isLoadingInsts = instancesLoading[task.task_id];
+            return (
+              <div key={task.task_id} className="space-y-1.5">
+                <div className="bg-white rounded-xl border border-slate-200 hover:border-indigo-200 hover:shadow-sm transition-all p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-2">
+                        <span className={`badge ${statusBadge(task.status)}`}>{task.status}</span>
+                        <span className="text-xs text-slate-500">{fmtDate(task.created_at)}</span>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200" title={task.task_id}>
+                          <span className="font-sans text-slate-400 font-semibold not-italic">ID</span>
+                          {task.task_id.slice(0,8)}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {p.domain && <span className="badge bg-indigo-50 text-indigo-700">{p.domain}</span>}
+                        {p.question_type && <span className="badge bg-purple-50 text-purple-700">{p.question_type}</span>}
+                        {p.num_tables !== undefined && <span className="badge bg-slate-100 text-slate-600">{p.num_tables === -1 ? 'ablation' : `${p.num_tables} tables`}</span>}
+                        {p.num_samples !== undefined && <span className="badge bg-slate-100 text-slate-600">{p.num_samples} samples</span>}
+                      </div>
+                      {task.status === 'completed' && (
+                        <p className="text-sm font-semibold text-slate-700 mt-2">{task.instance_count} instance(s) generated</p>
+                      )}
+                      {task.status === 'error' && task.error && (
+                        <p className="text-xs text-red-500 mt-1 truncate">{task.error}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1.5 flex-shrink-0">
+                      {task.status === 'completed' && task.instance_count > 0 && (
+                        <>
+                          <button onClick={() => toggleExpand(task.task_id)}
+                            className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${isExpanded ? 'bg-indigo-600 text-white' : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700'}`}>
+                            <Ico.Pencil className="w-3 h-3"/> {isExpanded ? 'Hide' : 'Edit'}
+                          </button>
+                          <a href={`/api/tasks/${task.task_id}/download?fmt=csv`} download
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-900 text-white transition-colors">
+                            <Ico.Download className="w-3 h-3"/> CSV
+                          </a>
+                          <a href={`/api/tasks/${task.task_id}/download?fmt=json`} download
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+                            <Ico.Download className="w-3 h-3"/> JSON
+                          </a>
+                          <button onClick={() => setEvaluatingTask(task)}
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-violet-100 hover:bg-violet-200 text-violet-700 transition-colors">
+                            <Ico.Flask className="w-3 h-3"/> Evaluate
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {isExpanded && (
+                  <div className="px-4 py-4 bg-indigo-50/60 rounded-xl border border-indigo-200 fade-up">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                        <Ico.Pencil className="w-3.5 h-3.5 text-indigo-500"/>
+                        Edit Instances
+                      </h3>
+                      <span className="text-xs text-slate-400">{task.instance_count} total</span>
+                    </div>
+                    {isLoadingInsts ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Ico.Loader className="w-5 h-5 text-indigo-400 spin"/>
+                      </div>
+                    ) : (cachedInsts || []).length === 0 ? (
+                      <p className="text-sm text-slate-400 text-center py-6">No instances available.</p>
+                    ) : (
+                      <InstanceList
+                        instances={cachedInsts || []}
+                        taskId={task.task_id}
+                        onEdit={(inst) => { setEditingInstance(inst); setEditingTaskId(task.task_id); }}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {evaluatingTask && (
+        <EvaluateModal
+          taskId={evaluatingTask.task_id}
+          instanceCount={evaluatingTask.instance_count}
+          defaultApiKey={defaultApiKey}
+          onClose={() => setEvaluatingTask(null)}
+          onDone={() => { setEvaluatingTask(null); }}
+        />
+      )}
+      {editingInstance && editingTaskId && (
+        <ErrorBoundary>
+          <InstanceEditorModal
+            instance={editingInstance}
+            taskId={editingTaskId}
+            onSave={updated => { handleSaveHistoryInstance(editingTaskId, updated); setEditingInstance(null); setEditingTaskId(null); }}
+            onClose={() => { setEditingInstance(null); setEditingTaskId(null); }}
+          />
+        </ErrorBoundary>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   LEADERBOARD PAGE
+   ============================================================ */
+function LeaderboardPage() {
+  const { useState: us, useEffect: ue } = React;
+  const [rows, setRows] = us([]);
+  const [loading, setLoading] = us(true);
+  const [filterDomain, setFilterDomain] = us('');
+  const [filterQtype, setFilterQtype] = us('');
+  const [filterModel, setFilterModel] = us('');
+  const [filterTaskId, setFilterTaskId] = us('');
+  const [selectedEval, setSelectedEval] = us(null);
+
+  async function loadLeaderboard() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/leaderboard');
+      const data = await res.json();
+      setRows(data.leaderboard || []);
+    } catch(e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  ue(() => { loadLeaderboard(); }, []);
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+
+  const typeColors = TYPE_COLORS;
+  const selCls = "border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white";
+
+  const uniqueTaskIds = [...new Set(rows.map(r => r.task_id).filter(Boolean))];
+
+  const displayed = rows.filter(r => {
+    const tp = r.task_params || {};
+    if (filterDomain && tp.domain !== filterDomain) return false;
+    if (filterQtype && tp.question_type !== filterQtype) return false;
+    if (filterModel && r.model_type !== filterModel) return false;
+    if (filterTaskId && r.task_id !== filterTaskId) return false;
+    return true;
+  });
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900">Model Leaderboard</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Completed evaluations sorted by accuracy</p>
+        </div>
+        <button onClick={loadLeaderboard} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 text-sm font-medium text-slate-600 transition-colors">
+          <Ico.RefreshCw className="w-4 h-4"/> Refresh
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex flex-wrap gap-3 items-center">
+        <Ico.Filter className="w-4 h-4 text-slate-400"/>
+        <select value={filterDomain} onChange={e=>setFilterDomain(e.target.value)} className={selCls}>
+          <option value="">All Domains</option>
+          <option value="environmental">Environmental</option>
+          <option value="finance">Finance</option>
+          <option value="healthcare">Healthcare</option>
+          <option value="products">Products</option>
+        </select>
+        <select value={filterQtype} onChange={e=>setFilterQtype(e.target.value)} className={selCls}>
+          <option value="">All Question Types</option>
+          <option value="sum">Sum</option>
+          <option value="average">Average</option>
+          <option value="superlative">Superlative</option>
+        </select>
+        <select value={filterModel} onChange={e=>setFilterModel(e.target.value)} className={selCls}>
+          <option value="">All Model Types</option>
+          <option value="openai">OpenAI</option>
+          <option value="claude">Claude</option>
+          <option value="gemini">Gemini</option>
+          <option value="huggingface">HuggingFace</option>
+        </select>
+        <select value={filterTaskId} onChange={e=>setFilterTaskId(e.target.value)} className={selCls}>
+          <option value="">All Datasets</option>
+          {uniqueTaskIds.map(tid => (
+            <option key={tid} value={tid}>Dataset {tid.slice(0,8)}</option>
+          ))}
+        </select>
+        {(filterDomain || filterQtype || filterModel || filterTaskId) && (
+          <button onClick={() => { setFilterDomain(''); setFilterQtype(''); setFilterModel(''); setFilterTaskId(''); }}
+            className="text-xs text-slate-400 hover:text-slate-600 underline">Clear filters</button>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Ico.Loader className="w-6 h-6 text-indigo-400 spin"/>
+        </div>
+      ) : displayed.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 py-16 flex flex-col items-center text-center">
+          <Ico.Trophy className="w-10 h-10 text-slate-300 mb-3"/>
+          <p className="text-slate-600 font-semibold">No evaluations yet</p>
+          <p className="text-sm text-slate-400 mt-1">Run an evaluation from the History page to see results here.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide w-10">#</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Model</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Task</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Accuracy</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">F1</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Correct</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {displayed.map((row, idx) => {
+                const acc = row.accuracy != null ? row.accuracy : 0;
+                const f1 = row.avg_f1 != null ? row.avg_f1 : 0;
+                const tp = row.task_params || {};
+                return (
+                  <tr key={row.eval_id}
+                    className="hover:bg-indigo-50/50 transition-colors cursor-pointer"
+                    onClick={() => setSelectedEval(row)}
+                    title="Click to view predictions">
+                    <td className="px-4 py-3">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-amber-100 text-amber-700' : idx === 1 ? 'bg-slate-200 text-slate-600' : idx === 2 ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-500'}`}>
+                        {idx + 1}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        <span className="font-semibold text-slate-900 text-sm">{row.model_name}</span>
+                        <span className={`badge w-fit ${typeColors[row.model_type] || 'bg-slate-100 text-slate-600'}`}>{row.model_type}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex flex-wrap gap-1">
+                          {tp.domain && <span className="badge bg-indigo-50 text-indigo-700">{tp.domain}</span>}
+                          {tp.question_type && <span className="badge bg-purple-50 text-purple-700">{tp.question_type}</span>}
+                          {tp.num_tables !== undefined && <span className="badge bg-slate-100 text-slate-600">{tp.num_tables === -1 ? 'ablation' : `${tp.num_tables}t`}</span>}
+                        </div>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 w-fit" title={row.task_id}>
+                          <span className="font-sans text-slate-400 font-semibold not-italic">ID</span>
+                          {(row.task_id||'').slice(0,8)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1.5">
+                        <span className="font-bold text-slate-900">{(acc * 100).toFixed(1)}%</span>
+                        <div className="w-24 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div className="acc-bar h-full" style={{width:`${Math.round(acc*100)}%`}}/>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-medium text-slate-700">{(f1 * 100).toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-slate-600">{row.correct != null ? `${row.correct}/${row.total}` : '—'}</td>
+                    <td className="px-4 py-3 text-slate-400 text-xs">{fmtDate(row.created_at)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {selectedEval && (
+        <ErrorBoundary>
+          <EvalDetailModal
+            evalId={selectedEval.eval_id}
+            evalInfo={selectedEval}
+            onClose={() => setSelectedEval(null)}
+          />
+        </ErrorBoundary>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   MAIN APP
+   ============================================================ */
+const { useState, useEffect, useRef } = React;
+
+function App() {
+  const [currentPage, setCurrentPage] = useState('generate');
+  const [apiKey, setApiKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [params, setParams] = useState({
+    domain: 'environmental',
+    question_type: 'sum',
+    num_tables: 3,
+    num_samples: 10,
+    col_cardinality: 20,
+    num_columns: 21,
+    sequential: false,
+  });
+
+  const [taskId, setTaskId] = useState(null);
+  const [taskStatus, setTaskStatus] = useState('idle');
+  const [progress, setProgress] = useState(0);
+  const [current, setCurrent] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [statusMsg, setStatusMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const [instances, setInstances] = useState([]);
+  const [generationErrors, setGenerationErrors] = useState([]);
+  const [editingInstance, setEditingInstance] = useState(null);
+  const [notification, setNotification] = useState(null);
+  const [showEvaluate, setShowEvaluate] = useState(false);
+
+  const eventSourceRef = useRef(null);
+
+  function showNotification(msg, type='success') {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 3500);
+  }
+
+  async function handleGenerate() {
+    if (!apiKey.trim()) {
+      showNotification('Please enter your OpenAI API key.', 'error');
+      return;
+    }
+    setInstances([]);
+    setGenerationErrors([]);
+    setProgress(0); setCurrent(0);
+    setErrorMsg('');
+    setTaskStatus('running');
+
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ ...params, api_key: apiKey }),
+      });
+      const data = await res.json();
+      const tid = data.task_id;
+      setTaskId(tid);
+      setTotal(params.num_samples);
+
+      if (eventSourceRef.current) eventSourceRef.current.close();
+      const es = new EventSource(`/api/generate/${tid}/stream`);
+      eventSourceRef.current = es;
+
+      es.onmessage = async (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.status === 'not_found') { es.close(); return; }
+        setProgress(msg.progress || 0);
+        setCurrent(msg.current || 0);
+        setTotal(msg.total || params.num_samples);
+        setStatusMsg(msg.status_message || '');
+        if (msg.status === 'completed') {
+          setTaskStatus('completed');
+          es.close();
+          const ir = await fetch(`/api/tasks/${tid}/instances`);
+          const id2 = await ir.json();
+          const insts = id2.instances || [];
+          const genErrs = id2.generation_errors || [];
+          setInstances(insts);
+          setGenerationErrors(genErrs);
+          if (insts.length > 0) {
+            showNotification(`Generated ${insts.length} instances successfully!`);
+          } else if (genErrs.length > 0) {
+            showNotification('Generation completed with errors — see details below.', 'error');
+          } else {
+            showNotification('Generation completed but produced no instances.', 'info');
+          }
+        } else if (msg.status === 'stopped') {
+          setTaskStatus('stopped');
+          es.close();
+        } else if (msg.status === 'error') {
+          setTaskStatus('error');
+          setErrorMsg(msg.error || 'An error occurred.');
+          es.close();
+        }
+      };
+      es.onerror = () => {
+        setTaskStatus('error');
+        setErrorMsg('Connection to server lost.');
+        es.close();
+      };
+    } catch(err) {
+      setTaskStatus('error');
+      setErrorMsg(String(err));
+    }
+  }
+
+  async function handleStop() {
+    if (!taskId) return;
+    await fetch(`/api/generate/${taskId}`, { method: 'DELETE' });
+    setTaskStatus('stopped');
+    if (eventSourceRef.current) eventSourceRef.current.close();
+    showNotification('Generation stopped.', 'info');
+  }
+
+  function handleReset() {
+    setTaskStatus('idle');
+    setTaskId(null);
+    setInstances([]);
+    setGenerationErrors([]);
+    setProgress(0); setCurrent(0);
+    setErrorMsg('');
+  }
+
+  function handleEditInstance(inst) { setEditingInstance(inst); }
+
+  function handleSaveInstance(updated) {
+    setInstances(prev => prev.map(i => i.id === updated.id ? updated : i));
+    showNotification('Instance saved.');
+  }
+
+  const pct = Math.round(progress * 100);
+  const isRunning = taskStatus === 'running';
+  const isDone = taskStatus === 'completed';
+  const isError = taskStatus === 'error';
+  const isStopped = taskStatus === 'stopped';
+
+  const navTabs = [
+    { id: 'generate', label: 'Generate', icon: Ico.Sparkles },
+    { id: 'history', label: 'History', icon: Ico.History },
+    { id: 'leaderboard', label: 'Leaderboard', icon: Ico.Trophy },
+  ];
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      {/* Navbar */}
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-4">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="w-7 h-7 rounded-lg grad-hero flex items-center justify-center">
+              <Ico.Sparkles className="w-3.5 h-3.5 text-white"/>
+            </div>
+            <span className="font-bold text-slate-900 text-sm hidden sm:block">TabQA Generator</span>
+            <span className="hidden lg:flex items-center badge bg-indigo-100 text-indigo-700 text-[10px]">CIKM 2025</span>
+          </div>
+
+          {/* Nav tabs */}
+          <div className="flex items-center gap-1 flex-1">
+            {navTabs.map(t => (
+              <button key={t.id} onClick={() => setCurrentPage(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${currentPage === t.id ? 'nav-tab-active' : 'nav-tab-inactive hover:bg-slate-50 hover:text-slate-800'}`}>
+                <t.icon className="w-4 h-4"/>
+                <span className="hidden sm:block">{t.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* API Key */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Ico.Key className="w-4 h-4 text-slate-400 hidden sm:block"/>
+            <div className="relative">
+              <input
+                type={showKey ? 'text' : 'password'}
+                placeholder="OpenAI API key"
+                value={apiKey}
+                onChange={e => setApiKey(e.target.value)}
+                className="w-36 sm:w-52 border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50 pr-8"
+              />
+              <button onClick={() => setShowKey(v => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-medium">
+                {showKey ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Page content */}
+      {currentPage === 'history' && (
+        <div className="flex-1">
+          <HistoryPage onNavigate={setCurrentPage} defaultApiKey={apiKey}/>
+        </div>
+      )}
+
+      {currentPage === 'leaderboard' && (
+        <div className="flex-1">
+          <LeaderboardPage/>
+        </div>
+      )}
+
+      {currentPage === 'generate' && (
+        <>
+          {/* Hero */}
+          <header className="grad-hero py-10 px-4">
+            <div className="max-w-7xl mx-auto">
+              <div className="max-w-2xl">
+                <h1 className="text-3xl sm:text-4xl font-extrabold text-white leading-tight">
+                  Tabular QA Benchmark<br/>Generator
+                </h1>
+                <p className="mt-3 text-indigo-200 text-base leading-relaxed">
+                  Generate synthetic multi-table numerical QA datasets with controlled perturbations, powered by <strong className="text-white">Gradino</strong>.
+                </p>
+                <div className="flex flex-wrap gap-3 mt-5">
+                  {[['Multi-table','Parallel & sequential multi-hop'],
+                    ['LLM-powered','GPT-driven table & question generation'],
+                    ['Editable output','Inspect and refine every instance']].map(([title]) => (
+                    <div key={title} className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm rounded-lg px-3 py-1.5">
+                      <Ico.Check className="w-3.5 h-3.5 text-indigo-300"/>
+                      <span className="text-white text-xs font-medium">{title}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {/* Main */}
+          <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-8">
+            <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6 items-start">
+              {/* Left: config */}
+              <div className="space-y-4">
+                <ConfigPanel params={params} onChange={setParams} onGenerate={handleGenerate} disabled={isRunning}/>
+                {isDone && instances.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 shadow-sm">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Download Dataset</p>
+                    <div className="flex gap-2">
+                      <a href={`/api/tasks/${taskId}/download?fmt=csv`} download
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold transition-colors">
+                        <Ico.Download className="w-3.5 h-3.5"/> CSV
+                      </a>
+                      <a href={`/api/tasks/${taskId}/download?fmt=json`} download
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors">
+                        <Ico.Download className="w-3.5 h-3.5"/> JSON
+                      </a>
+                    </div>
+                    <button onClick={() => setShowEvaluate(true)}
+                      className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold transition-colors">
+                      <Ico.Flask className="w-3.5 h-3.5"/> Evaluate with a Model
+                    </button>
+                    <button onClick={handleReset}
+                      className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold transition-colors border border-slate-200">
+                      <Ico.RefreshCw className="w-3.5 h-3.5"/> New Generation
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Right: output */}
+              <div>
+                {taskStatus === 'idle' && (
+                  <div className="bg-white rounded-2xl border border-slate-200 p-12 flex flex-col items-center justify-center text-center min-h-[320px] fade-up">
+                    <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+                      <Ico.Table className="w-8 h-8 text-slate-400"/>
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-800 mb-1">Ready to generate</h3>
+                    <p className="text-sm text-slate-500 max-w-xs">Configure the parameters on the left, enter your OpenAI API key, and click <strong>Generate Benchmark</strong>.</p>
+                  </div>
+                )}
+
+                {isRunning && (
+                  <div className="bg-white rounded-2xl border border-slate-200 p-8 fade-up">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-3">
+                        <Ico.Loader className="w-5 h-5 text-indigo-600 spin"/>
+                        <div>
+                          <p className="font-bold text-slate-900">Generating…</p>
+                          <p className="text-xs text-slate-500">{statusMsg}</p>
+                        </div>
+                      </div>
+                      <button onClick={handleStop}
+                        className="flex items-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-semibold text-sm rounded-lg transition-colors border border-red-200">
+                        <Ico.Stop className="w-4 h-4"/> Stop
+                      </button>
+                    </div>
+                    <div className="mb-2">
+                      <div className="flex justify-between text-xs text-slate-500 mb-1">
+                        <span>{pct}% complete</span>
+                        <span>{current} / {total} samples</span>
+                      </div>
+                      <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="progress-bar h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500"
+                          style={{width: `${pct}%`}}/>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-3">
+                      Generation may take several minutes. Each sample requires multiple LLM API calls.
+                    </p>
+                  </div>
+                )}
+
+                {isError && (
+                  <div className="bg-white rounded-2xl border border-red-200 p-6 fade-up">
+                    <div className="flex items-start gap-3 mb-4">
+                      <Ico.AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5"/>
+                      <div>
+                        <p className="font-bold text-red-700">Generation failed</p>
+                        <p className="text-sm text-red-600 mt-1 font-mono break-all">{errorMsg}</p>
+                      </div>
+                    </div>
+                    <button onClick={handleReset}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm rounded-lg transition-colors">
+                      <Ico.RefreshCw className="w-4 h-4"/> Try again
+                    </button>
+                  </div>
+                )}
+
+                {isStopped && !isDone && (
+                  <div className="bg-white rounded-2xl border border-amber-200 p-6 fade-up">
+                    <p className="font-bold text-amber-700 mb-3">Generation stopped</p>
+                    {instances.length > 0
+                      ? <p className="text-sm text-slate-600">{instances.length} instance(s) were generated before stopping.</p>
+                      : <p className="text-sm text-slate-500">No instances were generated.</p>
+                    }
+                    <button onClick={handleReset} className="mt-4 flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm rounded-lg transition-colors">
+                      <Ico.RefreshCw className="w-4 h-4"/> Start over
+                    </button>
+                  </div>
+                )}
+
+                {isDone && instances.length === 0 && generationErrors.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-red-200 p-6 fade-up space-y-3">
+                    <div className="flex items-start gap-3">
+                      <Ico.AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5"/>
+                      <div>
+                        <p className="font-bold text-red-700">Generation completed with errors</p>
+                        <p className="text-sm text-slate-500 mt-0.5">All {generationErrors.length} sample(s) failed. Check your API key and parameters.</p>
+                      </div>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto scrollbar-thin space-y-1.5">
+                      {generationErrors.slice(0, 20).map((e, i) => (
+                        <pre key={i} className="text-xs bg-slate-900 text-red-300 rounded-lg p-2.5 overflow-x-auto font-mono whitespace-pre-wrap break-all">{e}</pre>
+                      ))}
+                      {generationErrors.length > 20 && (
+                        <p className="text-xs text-slate-400 text-center">…and {generationErrors.length - 20} more errors</p>
+                      )}
+                    </div>
+                    <button onClick={handleReset}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm rounded-lg transition-colors">
+                      <Ico.RefreshCw className="w-4 h-4"/> Try again
+                    </button>
+                  </div>
+                )}
+
+                {(isDone || (isStopped && instances.length > 0)) && instances.length > 0 && (
+                  <div className="space-y-4 fade-up">
+                    <div className="flex items-center justify-between">
+                      <h2 className="font-bold text-slate-900 text-lg">
+                        Generated Instances
+                        <span className="ml-2 text-sm font-normal text-slate-500">({instances.length} total)</span>
+                      </h2>
+                    </div>
+                    <InstanceList instances={instances} taskId={taskId} onEdit={handleEditInstance}/>
+                  </div>
+                )}
+              </div>
+            </div>
+          </main>
+        </>
+      )}
+
+      {/* Footer */}
+      <footer className="border-t border-slate-200 bg-white py-5 px-4 mt-8">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
+          <span>TabQA Generator — Demo for <strong className="text-slate-600">CIKM 2025</strong></span>
+          <span>Built on <a href="https://github.com/softlab-unimore/Gradino" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline font-medium">Gradino</a> by softlab-unimore</span>
+        </div>
+      </footer>
+
+      {/* Instance editor modal */}
+      {editingInstance && (
+        <ErrorBoundary>
+          <InstanceEditorModal
+            instance={editingInstance}
+            taskId={taskId}
+            onSave={updated => { handleSaveInstance(updated); setEditingInstance(null); }}
+            onClose={() => setEditingInstance(null)}
+          />
+        </ErrorBoundary>
+      )}
+
+      {/* Evaluate modal (from generate page) */}
+      {showEvaluate && taskId && (
+        <EvaluateModal
+          taskId={taskId}
+          instanceCount={instances.length}
+          defaultApiKey={apiKey}
+          onClose={() => setShowEvaluate(false)}
+          onDone={() => { setShowEvaluate(false); showNotification('Evaluation saved to Leaderboard!'); }}
+        />
+      )}
+
+      {/* Notification toast */}
+      {notification && (
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl text-sm font-medium fade-up
+          ${notification.type === 'error' ? 'bg-red-600 text-white' : notification.type === 'info' ? 'bg-slate-800 text-white' : 'bg-emerald-600 text-white'}`}>
+          {notification.type === 'error' ? <Ico.AlertCircle className="w-4 h-4"/> : <Ico.Check className="w-4 h-4"/>}
+          {notification.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
