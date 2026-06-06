@@ -732,6 +732,56 @@ async def get_eval_predictions(eval_id: str):
     return {"eval_id": eval_id, "predictions": predictions}
 
 
+@app.get("/api/evaluate/{eval_id}/download/correct")
+async def download_correct_predictions(eval_id: str):
+    if eval_id not in eval_tasks:
+        raise HTTPException(404, "Eval task not found")
+    preds_file = os.path.join(EVALS_DIR, eval_id, "predictions.json")
+    if not os.path.isfile(preds_file):
+        raise HTTPException(404, "Predictions not yet available")
+    with open(preds_file, encoding="utf-8") as f:
+        all_predictions = json.load(f)
+
+    et = eval_tasks[eval_id]
+    gen_task = tasks.get(et.get("task_id", ""))
+    task_params = gen_task.get("params") if gen_task else {}
+
+    correct = [p for p in all_predictions if p.get("match")]
+    dataset = {
+        "metadata": {
+            "eval_id": eval_id,
+            "task_id": et.get("task_id"),
+            "model_name": et.get("model_name"),
+            "model_type": et.get("model_type"),
+            "total_instances": et.get("total"),
+            "correct_instances": len(correct),
+            "accuracy": et.get("accuracy"),
+            "created_at": et.get("created_at"),
+            "task_params": task_params,
+        },
+        "instances": [
+            {
+                "id": p["id"],
+                "question": p["question"],
+                "tables": p.get("tables", []),
+                "answer": p.get("label"),
+                "answer_display": p.get("label_display", p.get("label")),
+                "model_prediction": p.get("prediction"),
+                "reasoning": p.get("reasoning", ""),
+                "f1": p.get("f1", 1.0),
+            }
+            for p in correct
+        ],
+    }
+    content = json.dumps(dataset, indent=2, ensure_ascii=False)
+    filename = f"correct_predictions_{eval_id[:8]}.json"
+    return StreamingResponse(
+        io.BytesIO(content.encode()),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @app.get("/api/leaderboard")
 async def get_leaderboard(task_id: Optional[str] = None):
     result = []
