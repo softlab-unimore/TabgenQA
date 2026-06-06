@@ -1,4 +1,4 @@
-# TabQA Generator
+# TabgenQA
 
 A web-based demo for generating tabular Question-Answering benchmarks, powered by Gradino. Built for the CIKM 2026 conference demo track.
 
@@ -20,8 +20,8 @@ A web-based demo for generating tabular Question-Answering benchmarks, powered b
 ### Run
 
 ```bash
-git clone https://github.com/lucacontalbo/TabQAGenerator.git
-cd TabQAGenerator
+git clone https://github.com/softlab-unimore/TabgenQA.git
+cd TabgenQA
 
 # Optional: set API key via .env (or enter it in the UI at runtime)
 cp .env.example .env
@@ -32,7 +32,7 @@ docker compose up --build
 
 Then open **http://localhost:8000** in your browser.
 
-> The first build clones Gradino and installs all dependencies (including z3-solver). This may take 3–5 minutes. Subsequent starts are fast.
+> The first build clones Gradino and installs all dependencies (including z3-solver). This may take 3–5 minutes. Subsequent starts are faster.
 
 ## Usage
 
@@ -58,7 +58,7 @@ Then open **http://localhost:8000** in your browser.
 ## Architecture
 
 ```
-TabQAGenerator/
+TabgenQA/
 ├── docker-compose.yml       # Single-service Docker Compose config
 ├── Dockerfile               # Clones Gradino + installs deps
 ├── backend/
